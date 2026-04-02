@@ -311,6 +311,8 @@ const submitImportSubscription = async () => {
   const addedCount = Math.max(after.length - before.length, 0)
   message.success(addedCount > 0 ? `导入成功，新增 ${addedCount} 个节点` : '订阅更新成功')
   getStatus()
+  // 导入后直接打开节点选择，符合国内用户“导入-选节点-连接”的习惯
+  await getList()
   return true
 }
 
@@ -463,7 +465,8 @@ const useRecent = (text: string) => {
 }
 
 .main-card {
-  width: 380px;
+  width: 520px;
+  min-height: 620px;
   border-radius: 14px;
 }
 
@@ -484,7 +487,7 @@ const useRecent = (text: string) => {
 
 .full-width-btn {
   width: 100%;
-  height: 44px;
+  height: 48px;
 }
 
 .version {
