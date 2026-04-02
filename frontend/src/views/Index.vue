@@ -35,6 +35,7 @@
       <div class="quick-actions">
         <n-button class="pill-btn" @click="openNodeDialog">节点选择</n-button>
         <n-button class="pill-btn" @click="refreshSub">更新订阅</n-button>
+        <n-button class="pill-btn" @click="openRuleDialog">规则设置</n-button>
         <n-button class="pill-btn" @click="exportConfigFile">导出配置</n-button>
       </div>
 
@@ -108,6 +109,26 @@
     </n-modal>
 
     <n-modal
+      v-model:show="showRuleModal"
+      :mask-closable="false"
+      preset="dialog"
+      title="规则设置（游戏加速）"
+      positive-text="保存规则"
+      negative-text="取消"
+      @positive-click="saveRules"
+    >
+      <n-space vertical>
+        <n-text depth="3">示例：商店走代理，下载直连</n-text>
+        <n-input
+          v-model:value="ruleText"
+          type="textarea"
+          :autosize="{ minRows: 8, maxRows: 14 }"
+          placeholder="# DIRECT domain_suffix steamcontent.com,cm.steampowered.com&#10;# PROXY domain_suffix steampowered.com,steamcommunity.com"
+        />
+      </n-space>
+    </n-modal>
+
+    <n-modal
       v-model:show="showModal"
       :mask-closable="false"
       preset="dialog"
@@ -137,10 +158,12 @@ import {
   BatchAdd,
   DeleteSubscription,
   ExportConfig,
+  GetRuleText,
   ImportConfig,
   List,
   ListSubscriptions,
   RefreshSubscription,
+  SaveRuleText,
   SetPeer,
   Start,
   Status,
@@ -155,6 +178,7 @@ const btnDisabled = ref(false)
 const showModal = ref(false)
 const showImportModal = ref(false)
 const showManageModal = ref(false)
+const showRuleModal = ref(false)
 
 const importMode = ref<'url' | 'qrcode'>('url')
 const gameOpt = ref<Array<SelectOption | SelectGroupOption>>([])
@@ -171,6 +195,7 @@ const newUrl = ref<string>()
 const batchUrls = ref<string>()
 const subscriptionUrl = ref<string>('')
 const qrContent = ref<string>('')
+const ruleText = ref<string>('')
 const recentImports = ref<string[]>([])
 const subscriptions = ref<string[]>([])
 
@@ -255,6 +280,21 @@ const openImportDialog = () => {
 const openManageDialog = async () => {
   await loadSubscriptions()
   showManageModal.value = true
+}
+
+const openRuleDialog = async () => {
+  ruleText.value = await GetRuleText()
+  showRuleModal.value = true
+}
+
+const saveRules = async () => {
+  const res = await SaveRuleText(ruleText.value)
+  if (res === 'ok') {
+    message.success('规则已保存，重新连接后生效')
+    return true
+  }
+  message.error(`规则保存失败: ${res}`)
+  return false
 }
 
 const getStatus = () => {
@@ -547,7 +587,7 @@ const useRecent = (text: string) => {
 .quick-actions {
   margin-top: 14px;
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(4, 1fr);
   gap: 10px;
 }
 

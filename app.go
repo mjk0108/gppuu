@@ -8,6 +8,7 @@ import (
 	"github.com/danbai225/gpp/backend/client"
 	"github.com/danbai225/gpp/backend/config"
 	"github.com/danbai225/gpp/backend/data"
+	"github.com/sagernet/sing-box/option"
 	"github.com/danbai225/gpp/systray"
 	box "github.com/sagernet/sing-box"
 	netutils "github.com/shirou/gopsutil/v3/net"
@@ -297,6 +298,82 @@ func (a *App) DeleteSubscription(addr string) string {
 		a.conf.SubAddr = ""
 	}
 	if err := config.SaveConfig(a.conf); err != nil {
+		return err.Error()
+	}
+	return "ok"
+}
+
+func (a *App) GetRuleText() string {
+	a.lock.Lock()
+	defer a.lock.Unlock()
+	lines := make([]string, 0)
+	for _, r := range a.conf.Rules {
+		if r.Type != "default" {
+			continue
+		}
+		outbound := strings.ToLower(r.DefaultOptions.Outbound)
+		action := "PROXY"
+		if outbound == "direct" {
+			action = "DIRECT"
+		}
+		if len(r.DefaultOptions.DomainSuffix) > 0 {
+			lines = append(lines, fmt.Sprintf("%s domain_suffix %s", action, strings.Join(r.DefaultOptions.DomainSuffix, ",")))
+		}
+	}
+	if len(lines) == 0 {
+		return "# 规则格式：\n# DIRECT domain_suffix steamcontent.com,cm.steampowered.com\n# PROXY domain_suffix steampowered.com,steamcommunity.com\n# 上面示例：下载走直连，商店走代理"
+	}
+	return strings.Join(lines, "\n")
+}
+
+func (a *App) SaveRuleText(text string) string {
+	lines := strings.Split(text, "\n")
+	parsed := make([]option.Rule, 0)
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		parts := strings.Fields(line)
+		if len(parts) < 3 {
+			return fmt.Sprintf("规则格式错误: %s", line)
+		}
+		action := strings.ToUpper(parts[0])
+		kind := strings.ToLower(parts[1])
+		vals := strings.Split(strings.Join(parts[2:], " "), ",")
+		clean := make([]string, 0)
+		for _, v := range vals {
+			v = strings.TrimSpace(v)
+			if v != "" {
+				clean = append(clean, v)
+			}
+		}
+		if len(clean) == 0 {
+			continue
+		}
+		outbound := "proxy"
+		if action == "DIRECT" {
+			outbound = "direct"
+		} else if action != "PROXY" {
+			return fmt.Sprintf("不支持的动作: %s", action)
+		}
+		if kind != "domain_suffix" {
+			return fmt.Sprintf("暂只支持 domain_suffix: %s", kind)
+		}
+		parsed = append(parsed, option.Rule{
+			Type: "default",
+			DefaultOptions: option.DefaultRule{
+				DomainSuffix: clean,
+				Outbound:     outbound,
+			},
+		})
+	}
+
+	a.lock.Lock()
+	a.conf.Rules = parsed
+	err := config.SaveConfig(a.conf)
+	a.lock.Unlock()
+	if err != nil {
 		return err.Error()
 	}
 	return "ok"

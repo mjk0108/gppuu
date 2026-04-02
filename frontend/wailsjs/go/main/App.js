@@ -22,6 +22,10 @@ export function ExportConfig() {
   return window['go']['main']['App']['ExportConfig']();
 }
 
+export function GetRuleText() {
+  return window['go']['main']['App']['GetRuleText']();
+}
+
 export function ImportConfig(arg1) {
   return window['go']['main']['App']['ImportConfig'](arg1);
 }
@@ -40,6 +44,10 @@ export function PingAll() {
 
 export function RefreshSubscription() {
   return window['go']['main']['App']['RefreshSubscription']();
+}
+
+export function SaveRuleText(arg1) {
+  return window['go']['main']['App']['SaveRuleText'](arg1);
 }
 
 export function SetPeer(arg1, arg2) {

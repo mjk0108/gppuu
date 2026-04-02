@@ -13,6 +13,8 @@ export function DeleteSubscription(arg1:string):Promise<string>;
 
 export function ExportConfig():Promise<string>;
 
+export function GetRuleText():Promise<string>;
+
 export function ImportConfig(arg1:boolean):Promise<string>;
 
 export function List():Promise<Array<config.Peer>>;
@@ -22,6 +24,8 @@ export function ListSubscriptions():Promise<Array<string>>;
 export function PingAll():Promise<void>;
 
 export function RefreshSubscription():Promise<string>;
+
+export function SaveRuleText(arg1:string):Promise<string>;
 
 export function SetPeer(arg1:string,arg2:string):Promise<string>;
 
