@@ -2,9 +2,10 @@
   <div class="page">
     <n-card class="main-card" title="GPP 加速器" size="large">
       <template #header-extra>
-        <n-button text type="primary" @click="openImportDialog">
-          + 导入订阅
-        </n-button>
+        <n-space>
+          <n-button text type="primary" @click="openManageDialog">订阅管理</n-button>
+          <n-button text type="primary" @click="openImportDialog">+ 导入订阅</n-button>
+        </n-space>
       </template>
 
       <n-card embedded class="status-card">
@@ -30,13 +31,7 @@
       </n-card>
 
       <n-space vertical size="medium" class="action-area">
-        <n-button
-          type="primary"
-          size="large"
-          :disabled="btnDisabled"
-          class="full-width-btn"
-          @click="!state ? start() : stop()"
-        >
+        <n-button type="primary" size="large" :disabled="btnDisabled" class="full-width-btn" @click="!state ? start() : stop()">
           {{ btnText }}
         </n-button>
 
@@ -59,31 +54,49 @@
       v-model:show="showImportModal"
       :mask-closable="false"
       preset="dialog"
-      title="导入 Clash 订阅"
+      title="导入订阅"
       positive-text="导入并更新"
       negative-text="取消"
       @positive-click="submitImportSubscription"
     >
-      <n-space vertical size="small">
-        <n-text depth="3">支持 Clash YAML 订阅链接</n-text>
-        <n-input
-          v-model:value="subscriptionUrl"
-          placeholder="粘贴订阅链接（https://...）"
-          clearable
-        />
-        <n-space v-if="recentImports.length" align="center" wrap>
-          <n-text depth="3">最近导入:</n-text>
-          <n-tag
-            v-for="(item, idx) in recentImports"
-            :key="idx"
-            size="small"
-            round
-            @click="useRecent(item)"
-            style="cursor: pointer"
-          >
-            {{ shortText(item) }}
-          </n-tag>
-        </n-space>
+      <n-tabs v-model:value="importMode" type="line" animated>
+        <n-tab-pane name="url" tab="订阅链接">
+          <n-space vertical size="small">
+            <n-text depth="3">支持 Clash YAML 订阅</n-text>
+            <n-input v-model:value="subscriptionUrl" placeholder="粘贴订阅链接（https://...）" clearable />
+          </n-space>
+        </n-tab-pane>
+        <n-tab-pane name="qrcode" tab="二维码内容">
+          <n-space vertical size="small">
+            <n-text depth="3">支持粘贴二维码识别出的文本（clash:// 或直接链接）</n-text>
+            <n-input v-model:value="qrContent" type="textarea" :autosize="{ minRows: 3, maxRows: 6 }" placeholder="粘贴二维码内容" />
+          </n-space>
+        </n-tab-pane>
+      </n-tabs>
+
+      <n-space v-if="recentImports.length" align="center" wrap style="margin-top: 8px;">
+        <n-text depth="3">最近导入:</n-text>
+        <n-tag v-for="(item, idx) in recentImports" :key="idx" size="small" round @click="useRecent(item)" style="cursor: pointer">
+          {{ shortText(item) }}
+        </n-tag>
+      </n-space>
+    </n-modal>
+
+    <n-modal v-model:show="showManageModal" :mask-closable="false" preset="dialog" title="订阅管理" positive-text="关闭" @positive-click="() => true">
+      <n-space vertical>
+        <n-button secondary @click="refreshSub">全部更新</n-button>
+        <n-empty v-if="subscriptions.length === 0" description="暂无订阅" />
+        <n-card v-for="(item, idx) in subscriptions" :key="idx" size="small" embedded>
+          <n-space justify="space-between" align="center">
+            <n-ellipsis style="max-width: 210px;">{{ item }}</n-ellipsis>
+            <n-popconfirm @positive-click="removeSubscription(item)">
+              <template #trigger>
+                <n-button text type="error">删除</n-button>
+              </template>
+              确认删除该订阅？
+            </n-popconfirm>
+          </n-space>
+        </n-card>
       </n-space>
     </n-modal>
 
@@ -96,23 +109,9 @@
       negative-text="取消"
       @positive-click="submitCallback"
     >
-      <n-select
-        v-model:value="gameValue"
-        filterable
-        :options="gameOpt"
-        placeholder="请选择 Game 节点"
-        value-field="val"
-        label-field="name"
-      />
+      <n-select v-model:value="gameValue" filterable :options="gameOpt" placeholder="请选择 Game 节点" value-field="val" label-field="name" />
       <br />
-      <n-select
-        v-model:value="httpValue"
-        filterable
-        :options="httpOpt"
-        placeholder="请选择 Http 节点"
-        value-field="val"
-        label-field="name"
-      />
+      <n-select v-model:value="httpValue" filterable :options="httpOpt" placeholder="请选择 Http 节点" value-field="val" label-field="name" />
       <br />
       <n-input v-model:value="newUrl" type="textarea" :autosize="{ minRows: 2, maxRows: 4 }" placeholder="导入单个节点链接" />
       <br />
@@ -126,7 +125,20 @@
 
 <script lang="ts" setup>
 import { computed, onBeforeUnmount, onMounted, ref, type Ref } from 'vue'
-import { Add, BatchAdd, ExportConfig, ImportConfig, List, RefreshSubscription, SetPeer, Start, Status, Stop } from '../../wailsjs/go/main/App'
+import {
+  Add,
+  BatchAdd,
+  DeleteSubscription,
+  ExportConfig,
+  ImportConfig,
+  List,
+  ListSubscriptions,
+  RefreshSubscription,
+  SetPeer,
+  Start,
+  Status,
+  Stop
+} from '../../wailsjs/go/main/App'
 import { SelectGroupOption, SelectOption, useMessage } from 'naive-ui'
 
 const state = ref(false)
@@ -135,7 +147,9 @@ const btnDisabled = ref(false)
 
 const showModal = ref(false)
 const showImportModal = ref(false)
+const showManageModal = ref(false)
 
+const importMode = ref<'url' | 'qrcode'>('url')
 const gameOpt = ref<Array<SelectOption | SelectGroupOption>>([])
 const httpOpt = ref<Array<SelectOption | SelectGroupOption>>([])
 const gameValue = ref<string | undefined>()
@@ -149,7 +163,9 @@ const showUpDowInfo = ref(false)
 const newUrl = ref<string>()
 const batchUrls = ref<string>()
 const subscriptionUrl = ref<string>('')
+const qrContent = ref<string>('')
 const recentImports = ref<string[]>([])
+const subscriptions = ref<string[]>([])
 
 let timerHandle: number | null = null
 const message = useMessage()
@@ -161,10 +177,7 @@ const formatBytes = (bytes: number) => {
 }
 
 const currentPeerName = computed(() => gamePeer.value?.name || httpPeer.value?.name || '未选择节点')
-const currentPing = computed(() => {
-  const ping = gamePeer.value?.ping || httpPeer.value?.ping || 0
-  return Number(ping)
-})
+const currentPing = computed(() => Number(gamePeer.value?.ping || httpPeer.value?.ping || 0))
 const runningStatus = computed(() => {
   if (btnDisabled.value) return { label: '无可用节点', type: 'error' as const }
   if (state.value) return { label: '已连接', type: 'success' as const }
@@ -174,6 +187,7 @@ const runningStatus = computed(() => {
 onMounted(() => {
   loadRecentImports()
   getStatus()
+  loadSubscriptions()
   timerHandle = window.setInterval(getStatus, 1000)
 })
 
@@ -222,13 +236,18 @@ const getList = async () => {
   })
 }
 
-const openNodeDialog = () => {
-  getList()
-}
+const openNodeDialog = () => getList()
 
 const openImportDialog = () => {
   subscriptionUrl.value = ''
+  qrContent.value = ''
+  importMode.value = 'url'
   showImportModal.value = true
+}
+
+const openManageDialog = async () => {
+  await loadSubscriptions()
+  showManageModal.value = true
 }
 
 const getStatus = () => {
@@ -247,14 +266,29 @@ const getStatus = () => {
   })
 }
 
+const normalizeSubscriptionInput = (raw: string) => {
+  let text = raw.trim()
+  if (!text) return ''
+  if (text.startsWith('clash://')) {
+    const payload = text.replace(/^clash:\/\//i, '')
+    try {
+      text = atob(payload)
+    } catch {
+      return ''
+    }
+  }
+  return text.trim()
+}
+
 const submitImportSubscription = async () => {
-  const url = subscriptionUrl.value.trim()
+  const source = importMode.value === 'url' ? subscriptionUrl.value : qrContent.value
+  const url = normalizeSubscriptionInput(source)
   if (!url) {
-    message.warning('请先粘贴订阅链接')
+    message.warning('请先输入订阅内容')
     return false
   }
   if (!/^https?:\/\//i.test(url)) {
-    message.error('链接格式不正确，请输入 http/https 链接')
+    message.error('未识别到有效链接，请检查二维码内容')
     return false
   }
 
@@ -272,10 +306,10 @@ const submitImportSubscription = async () => {
   }
 
   saveRecentImport(url)
+  await loadSubscriptions()
   const after = await List()
   const addedCount = Math.max(after.length - before.length, 0)
   message.success(addedCount > 0 ? `导入成功，新增 ${addedCount} 个节点` : '订阅更新成功')
-  await getList()
   getStatus()
   return true
 }
@@ -302,6 +336,24 @@ const refreshSub = async () => {
   }
 }
 
+const loadSubscriptions = async () => {
+  try {
+    subscriptions.value = await ListSubscriptions()
+  } catch {
+    subscriptions.value = []
+  }
+}
+
+const removeSubscription = async (addr: string) => {
+  const res = await DeleteSubscription(addr)
+  if (res === 'ok') {
+    message.success('订阅已删除')
+    await loadSubscriptions()
+  } else {
+    message.error(`删除失败: ${res}`)
+  }
+}
+
 const exportConfigFile = async () => {
   const res = await ExportConfig()
   if (res === 'cancel') return
@@ -318,6 +370,7 @@ const importConfigFile = async (merge: boolean) => {
   if (res === 'ok') {
     message.success(merge ? '导入并合并成功' : '导入并覆盖成功')
     getStatus()
+    await loadSubscriptions()
     await getList()
     return
   }
@@ -394,7 +447,8 @@ const shortText = (text: string) => {
 }
 
 const useRecent = (text: string) => {
-  subscriptionUrl.value = text
+  if (importMode.value === 'qrcode') qrContent.value = text
+  else subscriptionUrl.value = text
 }
 </script>
 

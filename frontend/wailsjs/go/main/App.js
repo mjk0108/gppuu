@@ -14,6 +14,10 @@ export function Del(arg1) {
   return window['go']['main']['App']['Del'](arg1);
 }
 
+export function DeleteSubscription(arg1) {
+  return window['go']['main']['App']['DeleteSubscription'](arg1);
+}
+
 export function ExportConfig() {
   return window['go']['main']['App']['ExportConfig']();
 }
@@ -24,6 +28,10 @@ export function ImportConfig(arg1) {
 
 export function List() {
   return window['go']['main']['App']['List']();
+}
+
+export function ListSubscriptions() {
+  return window['go']['main']['App']['ListSubscriptions']();
 }
 
 export function PingAll() {

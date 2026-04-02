@@ -9,11 +9,15 @@ export function BatchAdd(arg1:string):Promise<string>;
 
 export function Del(arg1:string):Promise<string>;
 
+export function DeleteSubscription(arg1:string):Promise<string>;
+
 export function ExportConfig():Promise<string>;
 
 export function ImportConfig(arg1:boolean):Promise<string>;
 
 export function List():Promise<Array<config.Peer>>;
+
+export function ListSubscriptions():Promise<Array<string>>;
 
 export function PingAll():Promise<void>;
 

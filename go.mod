@@ -12,6 +12,7 @@ require (
 	github.com/shirou/gopsutil/v3 v3.24.5
 	github.com/tevino/abool v0.0.0-20220530134649-2bfc934cb23c
 	github.com/wailsapp/wails/v2 v2.10.1
+	gopkg.in/yaml.v3 v3.0.1
 	golang.org/x/sys v0.30.0
 )
 

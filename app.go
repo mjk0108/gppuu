@@ -222,7 +222,21 @@ func (a *App) Add(token string) string {
 			})
 			return err.Error()
 		}
-		a.conf.SubAddr = token
+			a.conf.SubAddr = token
+		config.NormalizeSubAddrs(a.conf)
+		found := false
+		for _, addr := range a.conf.SubAddrs {
+			if addr == token {
+				found = true
+				break
+			}
+		}
+		if !found {
+			a.conf.SubAddrs = append(a.conf.SubAddrs, token)
+		}
+		if len(a.conf.SubAddrs) > 0 {
+			a.conf.SubAddr = a.conf.SubAddrs[0]
+		}
 	} else {
 		err, peer := config.ParsePeer(token)
 		if err != nil {
@@ -252,6 +266,37 @@ func (a *App) Add(token string) string {
 			Title:   "导入错误",
 			Message: err.Error(),
 		})
+		return err.Error()
+	}
+	return "ok"
+}
+
+func (a *App) ListSubscriptions() []string {
+	a.lock.Lock()
+	defer a.lock.Unlock()
+	config.NormalizeSubAddrs(a.conf)
+	out := make([]string, len(a.conf.SubAddrs))
+	copy(out, a.conf.SubAddrs)
+	return out
+}
+
+func (a *App) DeleteSubscription(addr string) string {
+	a.lock.Lock()
+	defer a.lock.Unlock()
+	config.NormalizeSubAddrs(a.conf)
+	out := make([]string, 0, len(a.conf.SubAddrs))
+	for _, sub := range a.conf.SubAddrs {
+		if sub != addr {
+			out = append(out, sub)
+		}
+	}
+	a.conf.SubAddrs = out
+	if len(a.conf.SubAddrs) > 0 {
+		a.conf.SubAddr = a.conf.SubAddrs[0]
+	} else {
+		a.conf.SubAddr = ""
+	}
+	if err := config.SaveConfig(a.conf); err != nil {
 		return err.Error()
 	}
 	return "ok"
@@ -298,20 +343,34 @@ func (a *App) SetPeer(game, http string) string {
 
 func (a *App) RefreshSubscription() string {
 	a.lock.Lock()
-	if a.conf.SubAddr == "" {
+	config.NormalizeSubAddrs(a.conf)
+	if len(a.conf.SubAddrs) == 0 {
 		a.lock.Unlock()
 		return "订阅地址为空"
 	}
-	addr := a.conf.SubAddr
+	addrs := make([]string, len(a.conf.SubAddrs))
+	copy(addrs, a.conf.SubAddrs)
 	a.lock.Unlock()
 
-	peers, err := config.FetchSubscription(addr, 10*time.Second)
-	if err != nil {
-		return err.Error()
+	mergedPeers := make([]*config.Peer, 0)
+	failed := 0
+	for _, addr := range addrs {
+		peers, err := config.FetchSubscription(addr, 10*time.Second)
+		if err != nil {
+			failed++
+			continue
+		}
+		mergedPeers = config.MergePeers(mergedPeers, peers)
+	}
+	if len(mergedPeers) == 0 {
+		if failed > 0 {
+			return "全部订阅更新失败，请检查订阅链接是否有效"
+		}
+		return "未解析到可用节点"
 	}
 
 	a.lock.Lock()
-	a.conf.PeerList = config.MergePeers(a.conf.PeerList, peers)
+	a.conf.PeerList = config.MergePeers(a.conf.PeerList, mergedPeers)
 	if a.gamePeer == nil && len(a.conf.PeerList) > 0 {
 		a.gamePeer = a.conf.PeerList[0]
 		a.conf.GamePeer = a.gamePeer.Name

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/sagernet/sing-box/option"
+	"gopkg.in/yaml.v3"
 	"io"
 	"net/http"
 	"net/netip"
@@ -40,6 +41,7 @@ func (p *Peer) Domain() string {
 type Config struct {
 	PeerList []*Peer       `json:"peer_list"`
 	SubAddr  string        `json:"sub_addr"`
+	SubAddrs []string      `json:"sub_addrs"`
 	Rules    []option.Rule `json:"rules"`
 	GamePeer string        `json:"game_peer"`
 	HTTPPeer string        `json:"http_peer"`
@@ -103,11 +105,89 @@ func FetchSubscription(subAddr string, timeout time.Duration) ([]*Peer, error) {
 		return nil, err
 	}
 	peers := make([]*Peer, 0)
-	err = json.Unmarshal(data, &peers)
-	if err != nil {
+	if err = json.Unmarshal(data, &peers); err == nil {
+		return peers, nil
+	}
+	return ParseClashSubscription(data)
+}
+
+type clashProxy struct {
+	Name     string `yaml:"name"`
+	Type     string `yaml:"type"`
+	Server   string `yaml:"server"`
+	Port     int    `yaml:"port"`
+	UUID     string `yaml:"uuid"`
+	Password string `yaml:"password"`
+}
+
+type clashConfig struct {
+	Proxies []clashProxy `yaml:"proxies"`
+}
+
+func ParseClashSubscription(data []byte) ([]*Peer, error) {
+	var cfg clashConfig
+	if err := yaml.Unmarshal(data, &cfg); err != nil {
 		return nil, err
 	}
+	peers := make([]*Peer, 0, len(cfg.Proxies))
+	for _, p := range cfg.Proxies {
+		protocol := ""
+		switch strings.ToLower(p.Type) {
+		case "vless":
+			protocol = "vless"
+		case "hysteria2", "hy2":
+			protocol = "hysteria2"
+		case "ss", "shadowsocks":
+			protocol = "shadowsocks"
+		case "socks5", "socks":
+			protocol = "socks"
+		default:
+			continue
+		}
+		if p.Name == "" || p.Server == "" || p.Port <= 0 || p.Port > 65535 {
+			continue
+		}
+		uuid := p.UUID
+		if uuid == "" {
+			uuid = p.Password
+		}
+		peers = append(peers, &Peer{
+			Name:     p.Name,
+			Protocol: protocol,
+			Port:     uint16(p.Port),
+			Addr:     p.Server,
+			UUID:     uuid,
+		})
+	}
+	if len(peers) == 0 {
+		return nil, errors.New("未解析到可用节点（仅支持 vless/hysteria2/ss/socks）")
+	}
 	return peers, nil
+}
+
+func NormalizeSubAddrs(conf *Config) {
+	seen := map[string]struct{}{}
+	out := make([]string, 0)
+	for _, addr := range conf.SubAddrs {
+		addr = strings.TrimSpace(addr)
+		if addr == "" {
+			continue
+		}
+		if _, ok := seen[addr]; ok {
+			continue
+		}
+		seen[addr] = struct{}{}
+		out = append(out, addr)
+	}
+	if conf.SubAddr != "" {
+		if _, ok := seen[conf.SubAddr]; !ok {
+			out = append(out, conf.SubAddr)
+		}
+	}
+	conf.SubAddrs = out
+	if len(conf.SubAddrs) > 0 {
+		conf.SubAddr = conf.SubAddrs[0]
+	}
 }
 
 func InitConfig() {
@@ -135,13 +215,16 @@ func LoadConfig() (*Config, error) {
 	conf := &Config{PeerList: make([]*Peer, 0)}
 	err = json.Unmarshal(file, &conf)
 	ensureDefaults(conf)
-	if conf.SubAddr != "" {
-		var peers []*Peer
-		peers, err = FetchSubscription(conf.SubAddr, 10*time.Second)
-		if err != nil {
-			return nil, err
+	NormalizeSubAddrs(conf)
+	if len(conf.SubAddrs) > 0 {
+		for _, addr := range conf.SubAddrs {
+			var peers []*Peer
+			peers, err = FetchSubscription(addr, 10*time.Second)
+			if err != nil {
+				continue
+			}
+			conf.PeerList = MergePeers(conf.PeerList, peers)
 		}
-		conf.PeerList = MergePeers(conf.PeerList, peers)
 		ensureDirectPeer(conf)
 	}
 	if conf.Debug {
