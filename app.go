@@ -213,7 +213,10 @@ func (a *App) Add(token string) string {
 		a.conf.PeerList = make([]*config.Peer, 0)
 	}
 	if strings.HasPrefix(token, "http") {
-		client := &http.Client{Timeout: 10 * time.Second}
+		client := &http.Client{Timeout: 10 * time.Second, Transport: &http.Transport{DialContext: func(ctx context.Context, network, address string) (net.Conn, error) {
+			d := &net.Dialer{Timeout: 10 * time.Second}
+			return d.DialContext(ctx, "tcp4", address)
+		}}}
 		_, err := client.Get(token)
 		if err != nil {
 			_, _ = runtime.MessageDialog(a.ctx, runtime.MessageDialogOptions{

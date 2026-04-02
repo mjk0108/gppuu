@@ -1,6 +1,7 @@
 package config
 
 import (
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -8,6 +9,7 @@ import (
 	"github.com/sagernet/sing-box/option"
 	"gopkg.in/yaml.v3"
 	"io"
+	"net"
 	"net/http"
 	"net/netip"
 	"net/url"
@@ -96,7 +98,7 @@ func MergePeers(existing, incoming []*Peer) []*Peer {
 }
 
 func FetchSubscription(subAddr string, timeout time.Duration) ([]*Peer, error) {
-	client := &http.Client{Timeout: timeout}
+	client := newHTTPClientIPv4(timeout)
 	resp, err := client.Get(subAddr)
 	if err != nil {
 		return nil, err
@@ -120,6 +122,23 @@ func FetchSubscription(subAddr string, timeout time.Duration) ([]*Peer, error) {
 		}
 	}
 	return ParseClashSubscription(data)
+}
+
+func newHTTPClientIPv4(timeout time.Duration) *http.Client {
+	transport := &http.Transport{
+		DialContext: (&net.Dialer{
+			Timeout: timeout,
+		}).DialContext,
+		ForceAttemptHTTP2:     true,
+		TLSHandshakeTimeout:   timeout,
+		ResponseHeaderTimeout: timeout,
+	}
+	// 优先 IPv4，避免部分机场 IPv6 不稳定导致 reset
+	transport.DialContext = func(ctx context.Context, network, address string) (net.Conn, error) {
+		d := &net.Dialer{Timeout: timeout}
+		return d.DialContext(ctx, "tcp4", address)
+	}
+	return &http.Client{Timeout: timeout, Transport: transport}
 }
 
 func decodeBase64Text(s string) (string, error) {
