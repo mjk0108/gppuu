@@ -10,6 +10,7 @@ import (
 	"io"
 	"net/http"
 	"net/netip"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -26,6 +27,7 @@ type Peer struct {
 	Port     uint16 `json:"port"`
 	Addr     string `json:"addr"`
 	UUID     string `json:"uuid"`
+	Cipher   string `json:"cipher,omitempty"`
 	Ping     uint   `json:"ping"`
 }
 
@@ -108,7 +110,126 @@ func FetchSubscription(subAddr string, timeout time.Duration) ([]*Peer, error) {
 	if err = json.Unmarshal(data, &peers); err == nil {
 		return peers, nil
 	}
+	if peers, err = ParseSSLinks(string(data)); err == nil {
+		return peers, nil
+	}
+	trimmed := strings.TrimSpace(string(data))
+	if decoded, decErr := decodeBase64Text(trimmed); decErr == nil {
+		if peers, err = ParseSSLinks(decoded); err == nil {
+			return peers, nil
+		}
+	}
 	return ParseClashSubscription(data)
+}
+
+func decodeBase64Text(s string) (string, error) {
+	s = strings.TrimSpace(strings.ReplaceAll(s, "\n", ""))
+	if s == "" {
+		return "", errors.New("empty")
+	}
+	if m := len(s) % 4; m != 0 {
+		s += strings.Repeat("=", 4-m)
+	}
+	b, err := base64.StdEncoding.DecodeString(s)
+	if err != nil {
+		b, err = base64.RawStdEncoding.DecodeString(strings.TrimRight(s, "="))
+		if err != nil {
+			return "", err
+		}
+	}
+	return string(b), nil
+}
+
+func ParseSSLinks(text string) ([]*Peer, error) {
+	lines := strings.Split(text, "\n")
+	out := make([]*Peer, 0)
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if !strings.HasPrefix(line, "ss://") {
+			continue
+		}
+		peer, err := parseSSLink(line)
+		if err != nil {
+			continue
+		}
+		// 过滤机场套餐提示行
+		if strings.Contains(peer.Name, "剩余流量") || strings.Contains(peer.Name, "套餐到期") || strings.Contains(peer.Name, "重置") {
+			continue
+		}
+		out = append(out, peer)
+	}
+	if len(out) == 0 {
+		return nil, errors.New("no ss links")
+	}
+	return out, nil
+}
+
+func parseSSLink(link string) (*Peer, error) {
+	body := strings.TrimPrefix(strings.TrimSpace(link), "ss://")
+	name := ""
+	if idx := strings.Index(body, "#"); idx >= 0 {
+		namePart := body[idx+1:]
+		body = body[:idx]
+		if dec, err := url.QueryUnescape(namePart); err == nil {
+			name = dec
+		} else {
+			name = namePart
+		}
+	}
+	// strip query like ?plugin=
+	if idx := strings.Index(body, "?"); idx >= 0 {
+		body = body[:idx]
+	}
+
+	userInfo := ""
+	hostPort := ""
+	if strings.Contains(body, "@") {
+		parts := strings.SplitN(body, "@", 2)
+		userInfo = parts[0]
+		hostPort = parts[1]
+	} else {
+		decoded, err := decodeBase64Text(body)
+		if err != nil {
+			return nil, err
+		}
+		parts := strings.SplitN(decoded, "@", 2)
+		if len(parts) != 2 {
+			return nil, errors.New("invalid ss decoded format")
+		}
+		userInfo = parts[0]
+		hostPort = parts[1]
+	}
+
+	decodedUserInfo, err := decodeBase64Text(userInfo)
+	if err == nil && strings.Contains(decodedUserInfo, ":") {
+		userInfo = decodedUserInfo
+	}
+	creds := strings.SplitN(userInfo, ":", 2)
+	if len(creds) != 2 {
+		return nil, errors.New("invalid ss userinfo")
+	}
+	cipher := creds[0]
+	password := creds[1]
+
+	addrPort, err := netip.ParseAddrPort(hostPort)
+	if err != nil {
+		if strings.Count(hostPort, ":") == 1 {
+			arr := strings.SplitN(hostPort, ":", 2)
+			port, pErr := strconv.Atoi(arr[1])
+			if pErr != nil {
+				return nil, pErr
+			}
+			if name == "" {
+				name = fmt.Sprintf("%s:%d", arr[0], port)
+			}
+			return &Peer{Name: name, Protocol: "shadowsocks", Addr: arr[0], Port: uint16(port), UUID: password, Cipher: cipher}, nil
+		}
+		return nil, err
+	}
+	if name == "" {
+		name = addrPort.Addr().String()
+	}
+	return &Peer{Name: name, Protocol: "shadowsocks", Addr: addrPort.Addr().String(), Port: addrPort.Port(), UUID: password, Cipher: cipher}, nil
 }
 
 type clashProxy struct {
@@ -118,6 +239,7 @@ type clashProxy struct {
 	Port     int    `yaml:"port"`
 	UUID     string `yaml:"uuid"`
 	Password string `yaml:"password"`
+	Cipher   string `yaml:"cipher"`
 }
 
 type clashConfig struct {
@@ -157,6 +279,7 @@ func ParseClashSubscription(data []byte) ([]*Peer, error) {
 			Port:     uint16(p.Port),
 			Addr:     p.Server,
 			UUID:     uuid,
+			Cipher:   p.Cipher,
 		})
 	}
 	if len(peers) == 0 {

@@ -18,6 +18,10 @@ func getOUt(peer *config.Peer) option.Outbound {
 	var out option.Outbound
 	switch peer.Protocol {
 	case "shadowsocks":
+		method := peer.Cipher
+		if method == "" {
+			method = "aes-256-gcm"
+		}
 		out = option.Outbound{
 			Type: "shadowsocks",
 			ShadowsocksOptions: option.ShadowsocksOutboundOptions{
@@ -25,7 +29,7 @@ func getOUt(peer *config.Peer) option.Outbound {
 					Server:     peer.Addr,
 					ServerPort: peer.Port,
 				},
-				Method:   "aes-256-gcm",
+				Method:   method,
 				Password: peer.UUID,
 				UDPOverTCP: &option.UDPOverTCPOptions{
 					Enabled: true,
