@@ -1,50 +1,97 @@
 <template>
   <div class="page">
     <n-card class="main-card" title="GPP 加速器" size="large">
-      <div class="status-wrap">
-        <n-progress
-          type="circle"
-          :height="24"
-          :status="percentageRef<=25?'error':percentageRef<=50?'warning':percentageRef<=75?'info':'success'"
-          :percentage="percentageRef"
+      <template #header-extra>
+        <n-button text type="primary" @click="openImportDialog">
+          + 导入订阅
+        </n-button>
+      </template>
+
+      <n-card embedded class="status-card">
+        <n-space vertical size="small">
+          <div class="status-item">
+            <n-text depth="3">当前状态</n-text>
+            <n-tag :type="runningStatus.type" size="small" round>{{ runningStatus.label }}</n-tag>
+          </div>
+          <div class="status-item">
+            <n-text depth="3">当前节点</n-text>
+            <n-text>{{ currentPeerName }}</n-text>
+          </div>
+          <div class="status-item">
+            <n-text depth="3">网络延迟</n-text>
+            <n-gradient-text v-if="currentPing > 0" :type="pingColor(currentPing)">{{ currentPing }} ms</n-gradient-text>
+            <n-text v-else depth="3">--</n-text>
+          </div>
+          <div class="status-item" v-if="showUpDowInfo">
+            <n-text depth="3">流量统计</n-text>
+            <n-gradient-text type="success">{{ formatBytes(down || 0) }}</n-gradient-text>
+          </div>
+        </n-space>
+      </n-card>
+
+      <n-space vertical size="medium" class="action-area">
+        <n-button
+          type="primary"
+          size="large"
+          :disabled="btnDisabled"
+          class="full-width-btn"
+          @click="!state ? start() : stop()"
         >
-          <n-space vertical size="small" style="text-align: center;">
-            <span>{{ percentageRef === 100 ? '加速完成' : percentageRef === 0 ? '未开始' : '正在加速' }}</span>
-            <div v-if="showGameHttpInfo">
-              <p class="peer-line" @click="openNodeDialog">Game: {{ gamePeer ? gamePeer.name : '未选择' }}
-                <n-gradient-text v-if="gamePeer" :type="pingColor(gamePeer.ping)"> {{ gamePeer.ping }}ms </n-gradient-text>
-              </p>
-              <p class="peer-line" @click="openNodeDialog">Http: {{ httpPeer ? httpPeer.name : '未选择' }}
-                <n-gradient-text v-if="httpPeer" :type="pingColor(httpPeer.ping)"> {{ httpPeer.ping }}ms </n-gradient-text>
-              </p>
-            </div>
-            <p v-if="showUpDowInfo">流量统计:
-              <n-gradient-text v-if="down" type="success">{{ formatBytes(down) }}</n-gradient-text>
-            </p>
-          </n-space>
-        </n-progress>
-      </div>
+          {{ btnText }}
+        </n-button>
 
-      <n-space justify="center" class="action-row">
-        <n-button type="primary" size="large" :disabled="btnDisabled" @click="!state ? start() : stop()">{{ btnText }}</n-button>
-        <n-button size="large" @click="openNodeDialog">节点管理</n-button>
-      </n-space>
+        <n-space justify="space-between">
+          <n-button size="large" @click="openNodeDialog">节点选择</n-button>
+          <n-button quaternary @click="refreshSub">更新订阅</n-button>
+        </n-space>
 
-      <n-space justify="center" class="tool-row">
-        <n-button tertiary @click="refreshSub">刷新订阅</n-button>
-        <n-button tertiary @click="exportConfigFile">导出配置</n-button>
-        <n-button tertiary @click="importConfigFile(true)">导入(合并)</n-button>
-        <n-button tertiary @click="importConfigFile(false)">导入(覆盖)</n-button>
+        <n-space>
+          <n-button quaternary @click="exportConfigFile">导出配置</n-button>
+          <n-button quaternary @click="importConfigFile(true)">导入(合并)</n-button>
+          <n-button quaternary @click="importConfigFile(false)">导入(覆盖)</n-button>
+        </n-space>
       </n-space>
 
       <div class="version">v1.4.6</div>
     </n-card>
 
     <n-modal
+      v-model:show="showImportModal"
+      :mask-closable="false"
+      preset="dialog"
+      title="导入 Clash 订阅"
+      positive-text="导入并更新"
+      negative-text="取消"
+      @positive-click="submitImportSubscription"
+    >
+      <n-space vertical size="small">
+        <n-text depth="3">支持 Clash YAML 订阅链接</n-text>
+        <n-input
+          v-model:value="subscriptionUrl"
+          placeholder="粘贴订阅链接（https://...）"
+          clearable
+        />
+        <n-space v-if="recentImports.length" align="center" wrap>
+          <n-text depth="3">最近导入:</n-text>
+          <n-tag
+            v-for="(item, idx) in recentImports"
+            :key="idx"
+            size="small"
+            round
+            @click="useRecent(item)"
+            style="cursor: pointer"
+          >
+            {{ shortText(item) }}
+          </n-tag>
+        </n-space>
+      </n-space>
+    </n-modal>
+
+    <n-modal
       v-model:show="showModal"
       :mask-closable="false"
       preset="dialog"
-      title="节点管理"
+      title="节点选择"
       positive-text="确认"
       negative-text="取消"
       @positive-click="submitCallback"
@@ -67,20 +114,7 @@
         label-field="name"
       />
       <br />
-      <n-input v-model:value="newUrl" type="textarea" :autosize="{ minRows: 2, maxRows: 4 }" placeholder="导入单个节点或订阅地址" />
-      <n-space v-if="recentImports.length" style="margin-top: 8px;" align="center" wrap>
-        <n-text depth="3">最近导入:</n-text>
-        <n-tag
-          v-for="(item, idx) in recentImports"
-          :key="idx"
-          size="small"
-          round
-          @click="useRecent(item)"
-          style="cursor:pointer;"
-        >
-          {{ shortText(item) }}
-        </n-tag>
-      </n-space>
+      <n-input v-model:value="newUrl" type="textarea" :autosize="{ minRows: 2, maxRows: 4 }" placeholder="导入单个节点链接" />
       <br />
       <n-input v-model:value="batchUrls" type="textarea" :autosize="{ minRows: 3, maxRows: 6 }" placeholder="批量导入：每行一个节点链接" />
       <n-space justify="end" style="margin-top: 8px;">
@@ -91,15 +125,17 @@
 </template>
 
 <script lang="ts" setup>
-import { ref, type Ref, onMounted, onBeforeUnmount } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, type Ref } from 'vue'
 import { Add, BatchAdd, ExportConfig, ImportConfig, List, RefreshSubscription, SetPeer, Start, Status, Stop } from '../../wailsjs/go/main/App'
-import { SelectOption, SelectGroupOption, useMessage } from 'naive-ui'
+import { SelectGroupOption, SelectOption, useMessage } from 'naive-ui'
 
-const percentageRef = ref(0)
 const state = ref(false)
-const btnText = ref('开始加速')
+const btnText = ref('一键连接')
 const btnDisabled = ref(false)
+
 const showModal = ref(false)
+const showImportModal = ref(false)
+
 const gameOpt = ref<Array<SelectOption | SelectGroupOption>>([])
 const httpOpt = ref<Array<SelectOption | SelectGroupOption>>([])
 const gameValue = ref<string | undefined>()
@@ -108,12 +144,11 @@ const httpValue = ref<string | undefined>()
 const gamePeer: Ref<any> = ref(null)
 const httpPeer: Ref<any> = ref(null)
 const down = ref<number>()
-
-const showGameHttpInfo = ref(true)
 const showUpDowInfo = ref(false)
 
 const newUrl = ref<string>()
 const batchUrls = ref<string>()
+const subscriptionUrl = ref<string>('')
 const recentImports = ref<string[]>([])
 
 let timerHandle: number | null = null
@@ -124,6 +159,17 @@ const formatBytes = (bytes: number) => {
   if (!bytes) return '0 KB'
   return bytes / 1024 > 1024 ? `${(bytes / 1024 / 1024).toFixed(2)} MB` : `${(bytes / 1024).toFixed(2)} KB`
 }
+
+const currentPeerName = computed(() => gamePeer.value?.name || httpPeer.value?.name || '未选择节点')
+const currentPing = computed(() => {
+  const ping = gamePeer.value?.ping || httpPeer.value?.ping || 0
+  return Number(ping)
+})
+const runningStatus = computed(() => {
+  if (btnDisabled.value) return { label: '无可用节点', type: 'error' as const }
+  if (state.value) return { label: '已连接', type: 'success' as const }
+  return { label: '未连接', type: 'warning' as const }
+})
 
 onMounted(() => {
   loadRecentImports()
@@ -138,40 +184,30 @@ onBeforeUnmount(() => {
   }
 })
 
-const start = () => {
+const start = async () => {
   btnDisabled.value = true
-  showGameHttpInfo.value = false
   showUpDowInfo.value = true
-  btnText.value = '加速中...'
-  Start().then((res) => {
-    if (res !== 'ok' && res !== 'running') {
-      message.error(`加速失败: ${res}`)
-      btnDisabled.value = false
-      showUpDowInfo.value = false
-      showGameHttpInfo.value = true
-      return
-    }
-    state.value = true
-    const anim = setInterval(() => {
-      percentageRef.value += 10
-      if (percentageRef.value >= 100) {
-        percentageRef.value = 100
-        clearInterval(anim)
-        btnText.value = '结束加速'
-        btnDisabled.value = false
-      }
-    }, 80)
-  })
+  btnText.value = '连接中...'
+  const res = await Start()
+  if (res !== 'ok' && res !== 'running') {
+    message.error(`连接失败: ${res}`)
+    btnText.value = '一键连接'
+    btnDisabled.value = false
+    showUpDowInfo.value = false
+    return
+  }
+  state.value = true
+  btnText.value = '断开连接'
+  btnDisabled.value = false
+  message.success('连接成功')
 }
 
-const stop = () => {
-  Stop().then(() => {
-    percentageRef.value = 0
-    state.value = false
-    showGameHttpInfo.value = true
-    showUpDowInfo.value = false
-    btnText.value = '开始加速'
-  })
+const stop = async () => {
+  await Stop()
+  state.value = false
+  showUpDowInfo.value = false
+  btnText.value = '一键连接'
+  message.success('已断开连接')
 }
 
 const getList = async () => {
@@ -190,19 +226,58 @@ const openNodeDialog = () => {
   getList()
 }
 
+const openImportDialog = () => {
+  subscriptionUrl.value = ''
+  showImportModal.value = true
+}
+
 const getStatus = () => {
   Status().then((res) => {
+    state.value = !!res.running
     if (res.game_peer !== null || res.http_peer !== null) {
       gamePeer.value = res.game_peer
       httpPeer.value = res.http_peer
       down.value = res.down
       btnDisabled.value = false
-      btnText.value = state.value ? '结束加速' : '开始加速'
+      btnText.value = state.value ? '断开连接' : '一键连接'
       return
     }
-    btnText.value = '没有节点'
+    btnText.value = '无可用节点'
     btnDisabled.value = true
   })
+}
+
+const submitImportSubscription = async () => {
+  const url = subscriptionUrl.value.trim()
+  if (!url) {
+    message.warning('请先粘贴订阅链接')
+    return false
+  }
+  if (!/^https?:\/\//i.test(url)) {
+    message.error('链接格式不正确，请输入 http/https 链接')
+    return false
+  }
+
+  const before = await List()
+  const addRes = await Add(url)
+  if (addRes !== 'ok') {
+    message.error(`订阅保存失败: ${addRes}`)
+    return false
+  }
+
+  const refreshRes = await RefreshSubscription()
+  if (refreshRes !== 'ok') {
+    message.error(`订阅更新失败: ${refreshRes}`)
+    return false
+  }
+
+  saveRecentImport(url)
+  const after = await List()
+  const addedCount = Math.max(after.length - before.length, 0)
+  message.success(addedCount > 0 ? `导入成功，新增 ${addedCount} 个节点` : '订阅更新成功')
+  await getList()
+  getStatus()
+  return true
 }
 
 const importBatch = async () => {
@@ -220,10 +295,10 @@ const importBatch = async () => {
 const refreshSub = async () => {
   const res = await RefreshSubscription()
   if (res === 'ok') {
-    message.success('订阅刷新成功')
+    message.success('订阅更新成功')
     await getList()
   } else {
-    message.error(`订阅刷新失败: ${res}`)
+    message.error(`订阅更新失败: ${res}`)
   }
 }
 
@@ -319,7 +394,7 @@ const shortText = (text: string) => {
 }
 
 const useRecent = (text: string) => {
-  newUrl.value = text
+  subscriptionUrl.value = text
 }
 </script>
 
@@ -329,48 +404,39 @@ const useRecent = (text: string) => {
   justify-content: center;
   align-items: center;
   min-height: 100vh;
-  background: #f6f8fb;
+  background: #f3f5f9;
+  padding: 20px;
 }
 
 .main-card {
-  width: 340px;
+  width: 380px;
   border-radius: 14px;
 }
 
-.status-wrap {
-  display: flex;
-  justify-content: center;
-  margin: 10px 0 18px;
+.status-card {
+  border-radius: 12px;
+  margin-bottom: 14px;
 }
 
-.action-row {
+.status-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.action-area {
   margin-top: 8px;
 }
 
-.tool-row {
-  margin-top: 14px;
-  flex-wrap: wrap;
+.full-width-btn {
+  width: 100%;
+  height: 44px;
 }
 
 .version {
   text-align: center;
-  margin-top: 16px;
+  margin-top: 14px;
   color: #18a058;
   font-weight: 600;
-}
-
-.peer-line {
-  cursor: pointer;
-  margin: 2px 0;
-}
-
-.n-progress-content {
-  width: 280px;
-  height: 280px;
-}
-
-.n-progress-content svg {
-  width: 280px;
-  height: 280px;
 }
 </style>
