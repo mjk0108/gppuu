@@ -30,9 +30,11 @@ func main() {
 	// Create application with options
 	err = wails.Run(&options.App{
 		Title:             "gpp",
-		Width:             360,
-		Height:            520,
-		DisableResize:     true,
+		Width:             980,
+		Height:            760,
+		MinWidth:          900,
+		MinHeight:         680,
+		DisableResize:     false,
 		HideWindowOnClose: true,
 		AssetServer: &assetserver.Options{
 			Assets: assets,
