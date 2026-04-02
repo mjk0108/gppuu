@@ -103,6 +103,12 @@ func getOUt(peer *config.Peer) option.Outbound {
 	return out
 }
 func Client(gamePeer, httpPeer *config.Peer, proxyDNS, localDNS string, rules []option.Rule) (*box.Box, error) {
+	if gamePeer == nil {
+		return nil, fmt.Errorf("game peer is nil")
+	}
+	if httpPeer == nil {
+		httpPeer = gamePeer
+	}
 	home, _ := os.UserHomeDir()
 	proxyOut := getOUt(gamePeer)
 	httpOut := proxyOut

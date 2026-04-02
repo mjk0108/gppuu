@@ -5,11 +5,19 @@ import {data} from '../models';
 
 export function Add(arg1:string):Promise<string>;
 
+export function BatchAdd(arg1:string):Promise<string>;
+
 export function Del(arg1:string):Promise<string>;
+
+export function ExportConfig():Promise<string>;
+
+export function ImportConfig(arg1:boolean):Promise<string>;
 
 export function List():Promise<Array<config.Peer>>;
 
 export function PingAll():Promise<void>;
+
+export function RefreshSubscription():Promise<string>;
 
 export function SetPeer(arg1:string,arg2:string):Promise<string>;
 

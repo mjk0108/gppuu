@@ -6,8 +6,20 @@ export function Add(arg1) {
   return window['go']['main']['App']['Add'](arg1);
 }
 
+export function BatchAdd(arg1) {
+  return window['go']['main']['App']['BatchAdd'](arg1);
+}
+
 export function Del(arg1) {
   return window['go']['main']['App']['Del'](arg1);
+}
+
+export function ExportConfig() {
+  return window['go']['main']['App']['ExportConfig']();
+}
+
+export function ImportConfig(arg1) {
+  return window['go']['main']['App']['ImportConfig'](arg1);
 }
 
 export function List() {
@@ -16,6 +28,10 @@ export function List() {
 
 export function PingAll() {
   return window['go']['main']['App']['PingAll']();
+}
+
+export function RefreshSubscription() {
+  return window['go']['main']['App']['RefreshSubscription']();
 }
 
 export function SetPeer(arg1, arg2) {

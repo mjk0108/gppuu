@@ -14,6 +14,7 @@ import (
 	"strconv"
 	"strings"
 	"sync/atomic"
+	"time"
 )
 
 var Debug atomic.Bool
@@ -47,6 +48,68 @@ type Config struct {
 	Debug    bool          `json:"debug"`
 }
 
+func ensureDirectPeer(conf *Config) {
+	if conf.PeerList == nil {
+		conf.PeerList = make([]*Peer, 0)
+	}
+	for _, peer := range conf.PeerList {
+		if peer != nil && peer.Name == "直连" {
+			return
+		}
+	}
+	conf.PeerList = append(conf.PeerList, &Peer{Name: "直连", Protocol: "direct", Port: 0, Addr: "127.0.0.1", UUID: "", Ping: 0})
+}
+
+func ensureDefaults(conf *Config) {
+	ensureDirectPeer(conf)
+	if conf.ProxyDNS == "" {
+		conf.ProxyDNS = "https://1.1.1.1/dns-query"
+	}
+	if conf.LocalDNS == "" {
+		conf.LocalDNS = "https://223.5.5.5/dns-query"
+	}
+}
+
+func MergePeers(existing, incoming []*Peer) []*Peer {
+	set := make(map[string]*Peer)
+	for _, peer := range existing {
+		if peer == nil || peer.Name == "" {
+			continue
+		}
+		set[peer.Name] = peer
+	}
+	for _, peer := range incoming {
+		if peer == nil || peer.Name == "" {
+			continue
+		}
+		set[peer.Name] = peer
+	}
+	out := make([]*Peer, 0, len(set))
+	for _, peer := range set {
+		out = append(out, peer)
+	}
+	return out
+}
+
+func FetchSubscription(subAddr string, timeout time.Duration) ([]*Peer, error) {
+	client := &http.Client{Timeout: timeout}
+	resp, err := client.Get(subAddr)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = resp.Body.Close() }()
+	data, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+	peers := make([]*Peer, 0)
+	err = json.Unmarshal(data, &peers)
+	if err != nil {
+		return nil, err
+	}
+	return peers, nil
+}
+
 func InitConfig() {
 	home, _ := os.UserHomeDir()
 	_path := "config.json"
@@ -71,47 +134,15 @@ func LoadConfig() (*Config, error) {
 	file, _ := os.ReadFile(_path)
 	conf := &Config{PeerList: make([]*Peer, 0)}
 	err = json.Unmarshal(file, &conf)
-	var direct bool
-	for _, peer := range conf.PeerList {
-		if peer.Name == "直连" {
-			direct = true
-		}
-	}
-	if !direct {
-		conf.PeerList = append(conf.PeerList, &Peer{Name: "直连", Protocol: "direct", Port: 0, Addr: "127.0.0.1", UUID: "", Ping: 0})
-	}
-	if conf.ProxyDNS == "" {
-		conf.ProxyDNS = "https://1.1.1.1/dns-query"
-	}
-	if conf.LocalDNS == "" {
-		conf.LocalDNS = "https://223.5.5.5/dns-query"
-	}
+	ensureDefaults(conf)
 	if conf.SubAddr != "" {
-		var resp *http.Response
-		var data []byte
-		resp, err = http.Get(conf.SubAddr)
+		var peers []*Peer
+		peers, err = FetchSubscription(conf.SubAddr, 10*time.Second)
 		if err != nil {
 			return nil, err
 		}
-		defer func() { _ = resp.Body.Close() }()
-		data, err = io.ReadAll(resp.Body)
-		if err != nil {
-			return nil, err
-		}
-		peers := make([]*Peer, 0)
-		err = json.Unmarshal(data, &peers)
-		if err != nil {
-			return nil, err
-		}
-		set := make(map[string]*Peer)
-		conf.PeerList = append(conf.PeerList, peers...)
-		for _, peer := range conf.PeerList {
-			set[peer.Name] = peer
-		}
-		conf.PeerList = make([]*Peer, 0)
-		for _, peer := range set {
-			conf.PeerList = append(conf.PeerList, peer)
-		}
+		conf.PeerList = MergePeers(conf.PeerList, peers)
+		ensureDirectPeer(conf)
 	}
 	if conf.Debug {
 		Debug.Swap(true)
@@ -126,7 +157,7 @@ func SaveConfig(config *Config) error {
 		_path = fmt.Sprintf("%s%c%s%c%s", home, os.PathSeparator, ".gpp", os.PathSeparator, "config.json")
 	}
 	file, _ := json.MarshalIndent(config, "", " ")
-	return os.WriteFile(_path, file, 0o644)
+	return os.WriteFile(_path, file, 0o600)
 }
 func ParsePeer(token string) (error, *Peer) {
 	split := strings.Split(token, "#")

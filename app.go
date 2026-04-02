@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"github.com/cloverstd/tcping/ping"
 	"github.com/danbai225/gpp/backend/client"
@@ -15,6 +16,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 	"sync"
@@ -117,22 +119,33 @@ func (a *App) startup(ctx context.Context) {
 	if len(a.conf.PeerList) > 0 {
 		if a.conf.GamePeer == "" {
 			a.conf.GamePeer = a.conf.PeerList[0].Name
+			a.gamePeer = a.conf.PeerList[0]
 		} else {
 			for _, peer := range a.conf.PeerList {
 				if peer.Name == a.conf.GamePeer {
 					a.gamePeer = peer
 				}
 			}
+			if a.gamePeer == nil {
+				a.gamePeer = a.conf.PeerList[0]
+				a.conf.GamePeer = a.gamePeer.Name
+			}
 		}
 		if a.conf.HTTPPeer == "" {
 			a.conf.HTTPPeer = a.conf.PeerList[0].Name
+			a.httpPeer = a.conf.PeerList[0]
 		} else {
 			for _, peer := range a.conf.PeerList {
 				if peer.Name == a.conf.HTTPPeer {
 					a.httpPeer = peer
 				}
 			}
+			if a.httpPeer == nil {
+				a.httpPeer = a.conf.PeerList[0]
+				a.conf.HTTPPeer = a.httpPeer.Name
+			}
 		}
+		_ = config.SaveConfig(a.conf)
 	}
 	go a.testPing()
 }
@@ -142,17 +155,26 @@ func (a *App) PingAll() {
 		a.lock.Unlock()
 		return
 	}
+	peers := make([]*config.Peer, 0, len(a.conf.PeerList))
+	for _, p := range a.conf.PeerList {
+		if p != nil {
+			peers = append(peers, p)
+		}
+	}
 	a.lock.Unlock()
 	group := sync.WaitGroup{}
-	for i := range a.conf.PeerList {
-		if a.conf.PeerList[i].Protocol == "direct" {
+	for i := range peers {
+		if peers[i].Protocol == "direct" {
 			continue
 		}
 		group.Add(1)
-		peer := a.conf.PeerList[i]
+		peer := peers[i]
 		go func() {
 			defer group.Done()
-			peer.Ping = pingPort(peer.Addr, peer.Port)
+			pingVal := pingPort(peer.Addr, peer.Port)
+			a.lock.Lock()
+			peer.Ping = pingVal
+			a.lock.Unlock()
 		}()
 	}
 	group.Wait()
@@ -178,7 +200,10 @@ func (a *App) Status() *data.Status {
 }
 
 func (a *App) List() []*config.Peer {
-	list := a.conf.PeerList
+	a.lock.Lock()
+	list := make([]*config.Peer, 0, len(a.conf.PeerList))
+	list = append(list, a.conf.PeerList...)
+	a.lock.Unlock()
 	sort.Slice(list, func(i, j int) bool { return list[i].Ping < list[j].Ping })
 	return list
 }
@@ -187,7 +212,8 @@ func (a *App) Add(token string) string {
 		a.conf.PeerList = make([]*config.Peer, 0)
 	}
 	if strings.HasPrefix(token, "http") {
-		_, err := http.Get(token)
+		client := &http.Client{Timeout: 10 * time.Second}
+		_, err := client.Get(token)
 		if err != nil {
 			_, _ = runtime.MessageDialog(a.ctx, runtime.MessageDialogOptions{
 				Type:    runtime.ErrorDialog,
@@ -265,6 +291,145 @@ func (a *App) SetPeer(game, http string) string {
 			Title:   "保存错误",
 			Message: err.Error(),
 		})
+		return err.Error()
+	}
+	return "ok"
+}
+
+func (a *App) RefreshSubscription() string {
+	a.lock.Lock()
+	if a.conf.SubAddr == "" {
+		a.lock.Unlock()
+		return "订阅地址为空"
+	}
+	addr := a.conf.SubAddr
+	a.lock.Unlock()
+
+	peers, err := config.FetchSubscription(addr, 10*time.Second)
+	if err != nil {
+		return err.Error()
+	}
+
+	a.lock.Lock()
+	a.conf.PeerList = config.MergePeers(a.conf.PeerList, peers)
+	if a.gamePeer == nil && len(a.conf.PeerList) > 0 {
+		a.gamePeer = a.conf.PeerList[0]
+		a.conf.GamePeer = a.gamePeer.Name
+	}
+	if a.httpPeer == nil && len(a.conf.PeerList) > 0 {
+		a.httpPeer = a.conf.PeerList[0]
+		a.conf.HTTPPeer = a.httpPeer.Name
+	}
+	err = config.SaveConfig(a.conf)
+	a.lock.Unlock()
+	if err != nil {
+		return err.Error()
+	}
+	return "ok"
+}
+
+func (a *App) BatchAdd(tokens string) string {
+	lines := strings.Split(tokens, "\n")
+	success := 0
+	fail := 0
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		if a.Add(line) == "ok" {
+			success++
+		} else {
+			fail++
+		}
+	}
+	return fmt.Sprintf("导入完成: 成功 %d 条, 失败 %d 条", success, fail)
+}
+
+func (a *App) ExportConfig() string {
+	a.lock.Lock()
+	data, err := json.MarshalIndent(a.conf, "", "  ")
+	a.lock.Unlock()
+	if err != nil {
+		return err.Error()
+	}
+
+	defaultName := fmt.Sprintf("gpp-config-%s.json", time.Now().Format("20060102-150405"))
+	path, err := runtime.SaveFileDialog(a.ctx, runtime.SaveDialogOptions{DefaultFilename: defaultName})
+	if err != nil {
+		return err.Error()
+	}
+	if path == "" {
+		return "cancel"
+	}
+	if filepath.Ext(path) == "" {
+		path += ".json"
+	}
+	err = os.WriteFile(path, data, 0o600)
+	if err != nil {
+		return err.Error()
+	}
+	return path
+}
+
+func (a *App) ImportConfig(merge bool) string {
+	path, err := runtime.OpenFileDialog(a.ctx, runtime.OpenDialogOptions{Filters: []runtime.FileFilter{{DisplayName: "JSON Config", Pattern: "*.json"}}})
+	if err != nil {
+		return err.Error()
+	}
+	if path == "" {
+		return "cancel"
+	}
+	content, err := os.ReadFile(path)
+	if err != nil {
+		return err.Error()
+	}
+	in := &config.Config{}
+	err = json.Unmarshal(content, in)
+	if err != nil {
+		return err.Error()
+	}
+
+	a.lock.Lock()
+	if merge {
+		a.conf.PeerList = config.MergePeers(a.conf.PeerList, in.PeerList)
+		if in.SubAddr != "" {
+			a.conf.SubAddr = in.SubAddr
+		}
+		if len(in.Rules) > 0 {
+			a.conf.Rules = in.Rules
+		}
+		if in.ProxyDNS != "" {
+			a.conf.ProxyDNS = in.ProxyDNS
+		}
+		if in.LocalDNS != "" {
+			a.conf.LocalDNS = in.LocalDNS
+		}
+	} else {
+		a.conf = in
+	}
+
+	if len(a.conf.PeerList) > 0 {
+		if a.conf.GamePeer == "" {
+			a.conf.GamePeer = a.conf.PeerList[0].Name
+		}
+		if a.conf.HTTPPeer == "" {
+			a.conf.HTTPPeer = a.conf.PeerList[0].Name
+		}
+	}
+	a.gamePeer = nil
+	a.httpPeer = nil
+	for _, p := range a.conf.PeerList {
+		if p.Name == a.conf.GamePeer {
+			a.gamePeer = p
+		}
+		if p.Name == a.conf.HTTPPeer {
+			a.httpPeer = p
+		}
+	}
+	err = config.SaveConfig(a.conf)
+	a.lock.Unlock()
+	if err != nil {
 		return err.Error()
 	}
 	return "ok"

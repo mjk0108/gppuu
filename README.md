@@ -45,6 +45,20 @@ sudo xattr -r -d com.apple.quarantine /Applications/gpp.app
 
 # 编译
 
+## 快速环境检查（推荐）
+
+在项目根目录执行：
+
+```bash
+./scripts/doctor.sh
+```
+
+或使用 Makefile：
+
+```bash
+make doctor
+```
+
 ## 编译服务端
 
 使用`golang`编译 `cmd/gpp/main.go`获得服务端可执行文件。
@@ -59,8 +73,23 @@ gui的客户端需要自建构建，需要安装`wails`、`npm`和`golang`，安
 
 使用`wails`编译
 
-```
+```bash
 wails build
+```
+
+Windows 下建议直接使用：
+
+```bash
+make build
+```
+
+## 一键发布（GitHub Releases）
+
+仓库已内置 GitHub Actions：推送 `v*` tag 会自动构建并上传客户端到 Releases。
+
+```bash
+git tag v1.4.7
+git push origin v1.4.7
 ```
 
 # config解释
