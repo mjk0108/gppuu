@@ -18,8 +18,12 @@
           <n-tag :type="runningStatus.type" round size="small">{{ runningStatus.label }}</n-tag>
         </div>
         <div class="status-row">
-          <span class="label">当前节点</span>
-          <n-ellipsis style="max-width: 300px">{{ currentPeerName }}</n-ellipsis>
+          <span class="label">游戏代理节点</span>
+          <n-ellipsis style="max-width: 320px">{{ gameNodeName }}</n-ellipsis>
+        </div>
+        <div class="status-row">
+          <span class="label">直连/HTTP节点</span>
+          <n-ellipsis style="max-width: 320px">{{ httpNodeName }}</n-ellipsis>
         </div>
         <div class="status-row">
           <span class="label">网络延迟</span>
@@ -208,6 +212,8 @@ const formatBytes = (bytes: number) => {
   return bytes / 1024 > 1024 ? `${(bytes / 1024 / 1024).toFixed(2)} MB` : `${(bytes / 1024).toFixed(2)} KB`
 }
 
+const gameNodeName = computed(() => gamePeer.value?.name || '未选择')
+const httpNodeName = computed(() => httpPeer.value?.name || '未选择')
 const currentPeerName = computed(() => gamePeer.value?.name || httpPeer.value?.name || '未选择节点')
 const currentPing = computed(() => Number(gamePeer.value?.ping || httpPeer.value?.ping || 0))
 const runningStatus = computed(() => {
@@ -506,11 +512,14 @@ const useRecent = (text: string) => {
 }
 
 .page {
-  min-height: 100vh;
+  height: 100vh;
+  width: 100vw;
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 28px;
+  padding: 18px;
+  overflow: hidden;
+  box-sizing: border-box;
 }
 
 .apple-bg {
@@ -520,9 +529,10 @@ const useRecent = (text: string) => {
 }
 
 .main-card {
-  width: 760px;
-  min-height: 650px;
+  width: min(920px, 96vw);
+  height: min(700px, 92vh);
   border-radius: 24px;
+  overflow: hidden;
 }
 
 .glass {
