@@ -47,7 +47,7 @@
         </n-space>
       </n-space>
 
-      <div class="version">v1.4.6</div>
+      <div class="version">v1.4.9</div>
     </n-card>
 
     <n-modal
