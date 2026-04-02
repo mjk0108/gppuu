@@ -1,53 +1,60 @@
 <template>
-  <div class="page">
-    <n-card class="main-card" title="GPP 加速器" size="large">
-      <template #header-extra>
+  <div class="page apple-bg">
+    <n-card class="main-card glass" :bordered="false">
+      <div class="hero">
+        <div>
+          <div class="app-title">GPP 加速器</div>
+          <div class="app-subtitle">简洁 · 稳定 · 一键连接</div>
+        </div>
         <n-space>
-          <n-button text type="primary" @click="openManageDialog">订阅管理</n-button>
-          <n-button text type="primary" @click="openImportDialog">+ 导入订阅</n-button>
+          <n-button quaternary class="ghost-btn" @click="openManageDialog">订阅管理</n-button>
+          <n-button type="primary" class="import-btn" @click="openImportDialog">+ 导入订阅</n-button>
         </n-space>
-      </template>
+      </div>
 
-      <n-card embedded class="status-card">
-        <n-space vertical size="small">
-          <div class="status-item">
-            <n-text depth="3">当前状态</n-text>
-            <n-tag :type="runningStatus.type" size="small" round>{{ runningStatus.label }}</n-tag>
-          </div>
-          <div class="status-item">
-            <n-text depth="3">当前节点</n-text>
-            <n-text>{{ currentPeerName }}</n-text>
-          </div>
-          <div class="status-item">
-            <n-text depth="3">网络延迟</n-text>
-            <n-gradient-text v-if="currentPing > 0" :type="pingColor(currentPing)">{{ currentPing }} ms</n-gradient-text>
-            <n-text v-else depth="3">--</n-text>
-          </div>
-          <div class="status-item" v-if="showUpDowInfo">
-            <n-text depth="3">流量统计</n-text>
-            <n-gradient-text type="success">{{ formatBytes(down || 0) }}</n-gradient-text>
-          </div>
-        </n-space>
-      </n-card>
+      <div class="status-panel">
+        <div class="status-row">
+          <span class="label">状态</span>
+          <n-tag :type="runningStatus.type" round size="small">{{ runningStatus.label }}</n-tag>
+        </div>
+        <div class="status-row">
+          <span class="label">当前节点</span>
+          <n-ellipsis style="max-width: 300px">{{ currentPeerName }}</n-ellipsis>
+        </div>
+        <div class="status-row">
+          <span class="label">网络延迟</span>
+          <n-gradient-text v-if="currentPing > 0" :type="pingColor(currentPing)">{{ currentPing }} ms</n-gradient-text>
+          <span v-else class="value-muted">--</span>
+        </div>
+        <div class="status-row" v-if="showUpDowInfo">
+          <span class="label">流量统计</span>
+          <n-gradient-text type="success">{{ formatBytes(down || 0) }}</n-gradient-text>
+        </div>
+      </div>
 
-      <n-space vertical size="medium" class="action-area">
-        <n-button type="primary" size="large" :disabled="btnDisabled" class="full-width-btn" @click="!state ? start() : stop()">
+      <div class="quick-actions">
+        <n-button class="pill-btn" @click="openNodeDialog">节点选择</n-button>
+        <n-button class="pill-btn" @click="refreshSub">更新订阅</n-button>
+        <n-button class="pill-btn" @click="exportConfigFile">导出配置</n-button>
+      </div>
+
+      <div class="main-cta-wrap">
+        <n-button
+          type="primary"
+          size="large"
+          class="main-cta"
+          :disabled="btnDisabled"
+          @click="!state ? start() : stop()"
+        >
           {{ btnText }}
         </n-button>
+      </div>
 
-        <n-space justify="space-between">
-          <n-button size="large" @click="openNodeDialog">节点选择</n-button>
-          <n-button quaternary @click="refreshSub">更新订阅</n-button>
-        </n-space>
-
-        <n-space>
-          <n-button quaternary @click="exportConfigFile">导出配置</n-button>
-          <n-button quaternary @click="importConfigFile(true)">导入(合并)</n-button>
-          <n-button quaternary @click="importConfigFile(false)">导入(覆盖)</n-button>
-        </n-space>
-      </n-space>
-
-      <div class="version">v1.4.10</div>
+      <div class="footer-row">
+        <n-button text @click="importConfigFile(true)">导入(合并)</n-button>
+        <n-button text @click="importConfigFile(false)">导入(覆盖)</n-button>
+        <span class="version">v1.5.0</span>
+      </div>
     </n-card>
 
     <n-modal
@@ -62,7 +69,7 @@
       <n-tabs v-model:value="importMode" type="line" animated>
         <n-tab-pane name="url" tab="订阅链接">
           <n-space vertical size="small">
-            <n-text depth="3">支持 Clash YAML 订阅</n-text>
+            <n-text depth="3">支持 Clash YAML 与机场常见 base64 订阅</n-text>
             <n-input v-model:value="subscriptionUrl" placeholder="粘贴订阅链接（https://...）" clearable />
           </n-space>
         </n-tab-pane>
@@ -88,7 +95,7 @@
         <n-empty v-if="subscriptions.length === 0" description="暂无订阅" />
         <n-card v-for="(item, idx) in subscriptions" :key="idx" size="small" embedded>
           <n-space justify="space-between" align="center">
-            <n-ellipsis style="max-width: 210px;">{{ item }}</n-ellipsis>
+            <n-ellipsis style="max-width: 260px;">{{ item }}</n-ellipsis>
             <n-popconfirm @positive-click="removeSubscription(item)">
               <template #trigger>
                 <n-button text type="error">删除</n-button>
@@ -311,7 +318,6 @@ const submitImportSubscription = async () => {
   const addedCount = Math.max(after.length - before.length, 0)
   message.success(addedCount > 0 ? `导入成功，新增 ${addedCount} 个节点` : '订阅更新成功')
   getStatus()
-  // 导入后直接打开节点选择，符合国内用户“导入-选节点-连接”的习惯
   await getList()
   return true
 }
@@ -332,7 +338,6 @@ const refreshSub = async () => {
   const res = await RefreshSubscription()
   if (res === 'ok') {
     message.success('订阅更新成功')
-    await getList()
   } else {
     message.error(`订阅更新失败: ${res}`)
   }
@@ -373,7 +378,6 @@ const importConfigFile = async (merge: boolean) => {
     message.success(merge ? '导入并合并成功' : '导入并覆盖成功')
     getStatus()
     await loadSubscriptions()
-    await getList()
     return
   }
   message.error(`导入失败: ${res}`)
@@ -445,7 +449,7 @@ const saveRecentImport = (text: string) => {
 
 const shortText = (text: string) => {
   const t = text.replace(/\s+/g, ' ')
-  return t.length > 22 ? `${t.slice(0, 22)}...` : t
+  return t.length > 26 ? `${t.slice(0, 26)}...` : t
 }
 
 const useRecent = (text: string) => {
@@ -455,45 +459,126 @@ const useRecent = (text: string) => {
 </script>
 
 <style>
+:root {
+  --apple-bg-1: #e9efff;
+  --apple-bg-2: #f7faff;
+  --apple-primary: #4f7cff;
+}
+
 .page {
-  display: flex;
-  justify-content: center;
-  align-items: center;
   min-height: 100vh;
-  background: #f3f5f9;
-  padding: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 28px;
+}
+
+.apple-bg {
+  background: radial-gradient(circle at 12% 12%, #dce8ff 0, transparent 45%),
+    radial-gradient(circle at 85% 0%, #e8f0ff 0, transparent 40%),
+    linear-gradient(180deg, var(--apple-bg-1), var(--apple-bg-2));
 }
 
 .main-card {
-  width: 520px;
-  min-height: 620px;
-  border-radius: 14px;
+  width: 760px;
+  min-height: 650px;
+  border-radius: 24px;
 }
 
-.status-card {
-  border-radius: 12px;
-  margin-bottom: 14px;
+.glass {
+  background: rgba(255, 255, 255, 0.72);
+  box-shadow: 0 20px 60px rgba(31, 63, 120, 0.15);
+  backdrop-filter: blur(10px);
 }
 
-.status-item {
+.hero {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  margin-bottom: 20px;
 }
 
-.action-area {
-  margin-top: 8px;
+.app-title {
+  font-size: 34px;
+  font-weight: 700;
+  line-height: 1.2;
+  color: #1f2a44;
 }
 
-.full-width-btn {
+.app-subtitle {
+  margin-top: 6px;
+  color: #6b7890;
+  font-size: 14px;
+}
+
+.import-btn {
+  border-radius: 14px;
+  height: 38px;
+  background: linear-gradient(135deg, #5b86ff, #4f7cff);
+}
+
+.ghost-btn {
+  border-radius: 14px;
+}
+
+.status-panel {
+  border-radius: 18px;
+  padding: 16px 18px;
+  background: rgba(255, 255, 255, 0.8);
+  border: 1px solid rgba(120, 140, 180, 0.18);
+}
+
+.status-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 34px;
+}
+
+.label {
+  color: #6b7890;
+  font-size: 14px;
+}
+
+.value-muted {
+  color: #9aa5ba;
+}
+
+.quick-actions {
+  margin-top: 14px;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+}
+
+.pill-btn {
+  border-radius: 14px;
+  height: 40px;
+  background: rgba(255, 255, 255, 0.86);
+}
+
+.main-cta-wrap {
+  margin-top: 20px;
+}
+
+.main-cta {
   width: 100%;
-  height: 48px;
+  height: 52px;
+  border-radius: 16px;
+  font-size: 16px;
+  font-weight: 600;
+  background: linear-gradient(135deg, #5b86ff, #4f7cff);
+}
+
+.footer-row {
+  margin-top: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
 }
 
 .version {
-  text-align: center;
-  margin-top: 14px;
-  color: #18a058;
-  font-weight: 600;
+  color: #8c97ab;
+  font-size: 12px;
 }
 </style>
