@@ -379,10 +379,10 @@ func (a *App) RefreshSubscription() string {
 		a.httpPeer = a.conf.PeerList[0]
 		a.conf.HTTPPeer = a.httpPeer.Name
 	}
-	err = config.SaveConfig(a.conf)
+	saveErr := config.SaveConfig(a.conf)
 	a.lock.Unlock()
-	if err != nil {
-		return err.Error()
+	if saveErr != nil {
+		return saveErr.Error()
 	}
 	return "ok"
 }
