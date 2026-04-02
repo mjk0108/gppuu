@@ -31,16 +31,30 @@ jobs:
       - run: go version
       - run: node -v
       - name: Install dependencies
+        shell: bash
         run: |
           cd frontend && npm install
           go install github.com/wailsapp/wails/v2/cmd/wails@latest
+          echo "$(go env GOPATH)/bin" >> $GITHUB_PATH
 
       # Build
-      - name: Build for ${{ matrix.build.GOOS }}-${{ matrix.build.GOARCH }}
+      - name: Build for macOS
+        if: runner.os == 'macOS'
+        shell: bash
         env:
           GOOS: ${{ matrix.build.GOOS }}
           GOARCH: ${{ matrix.build.GOARCH }}
-        run: ~/go/bin/wails build -m -trimpath -tags webkit2_41,with_quic -webview2 embed -o ${{ env.APP_NAME }}.exe
+        run: |
+          wails build -m -trimpath -tags webkit2_41,with_quic -o ${{ env.APP_NAME }}
+
+      - name: Build for Windows
+        if: runner.os == 'Windows'
+        shell: bash
+        env:
+          GOOS: ${{ matrix.build.GOOS }}
+          GOARCH: ${{ matrix.build.GOARCH }}
+        run: |
+          wails build -m -trimpath -tags with_quic -webview2 embed -o ${{ env.APP_NAME }}.exe
 
       # Compress: macOS
       - name: Create a compressed file for macOS
