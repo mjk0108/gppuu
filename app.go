@@ -202,6 +202,7 @@ func (a *App) Status() *data.Status {
 
 func (a *App) List() []*config.Peer {
 	a.lock.Lock()
+	config.EnsureDirectPeer(a.conf)
 	list := make([]*config.Peer, 0, len(a.conf.PeerList))
 	list = append(list, a.conf.PeerList...)
 	a.lock.Unlock()
@@ -250,6 +251,7 @@ func (a *App) Add(token string) string {
 		}
 		a.conf.PeerList = append(a.conf.PeerList, peer)
 	}
+	config.EnsureDirectPeer(a.conf)
 	err := config.SaveConfig(a.conf)
 	if err != nil {
 		_, _ = runtime.MessageDialog(a.ctx, runtime.MessageDialogOptions{
@@ -361,6 +363,7 @@ func (a *App) SaveRuleText(text string) string {
 
 	a.lock.Lock()
 	a.conf.Rules = parsed
+	config.EnsureDirectPeer(a.conf)
 	err := config.SaveConfig(a.conf)
 	a.lock.Unlock()
 	if err != nil {
@@ -438,6 +441,7 @@ func (a *App) RefreshSubscription() string {
 
 	a.lock.Lock()
 	a.conf.PeerList = config.MergePeers(a.conf.PeerList, mergedPeers)
+	config.EnsureDirectPeer(a.conf)
 	if a.gamePeer == nil && len(a.conf.PeerList) > 0 {
 		a.gamePeer = a.conf.PeerList[0]
 		a.conf.GamePeer = a.gamePeer.Name
@@ -534,6 +538,7 @@ func (a *App) ImportConfig(merge bool) string {
 	} else {
 		a.conf = in
 	}
+	config.EnsureDirectPeer(a.conf)
 
 	if len(a.conf.PeerList) > 0 {
 		if a.conf.GamePeer == "" {

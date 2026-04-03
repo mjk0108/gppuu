@@ -67,6 +67,11 @@ func ensureDirectPeer(conf *Config) {
 	conf.PeerList = append(conf.PeerList, &Peer{Name: "直连", Protocol: "direct", Port: 0, Addr: "127.0.0.1", UUID: "", Ping: 0})
 }
 
+// EnsureDirectPeer 保证“直连”节点始终存在
+func EnsureDirectPeer(conf *Config) {
+	ensureDirectPeer(conf)
+}
+
 func ensureDefaults(conf *Config) {
 	ensureDirectPeer(conf)
 	if conf.ProxyDNS == "" {
