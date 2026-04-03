@@ -2,6 +2,7 @@ package config
 
 import (
 	"context"
+	"crypto/tls"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -99,12 +100,15 @@ func MergePeers(existing, incoming []*Peer) []*Peer {
 
 func FetchSubscription(subAddr string, timeout time.Duration) ([]*Peer, error) {
 	client := newHTTPClientIPv4(timeout)
-	resp, err := client.Get(subAddr)
-	if err != nil {
-		return nil, err
+	var data []byte
+	var err error
+	for i := 0; i < 3; i++ {
+		data, err = fetchSubscriptionBody(client, subAddr)
+		if err == nil {
+			break
+		}
+		time.Sleep(time.Duration(i+1) * 400 * time.Millisecond)
 	}
-	defer func() { _ = resp.Body.Close() }()
-	data, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, err
 	}
@@ -124,14 +128,38 @@ func FetchSubscription(subAddr string, timeout time.Duration) ([]*Peer, error) {
 	return ParseClashSubscription(data)
 }
 
+func fetchSubscriptionBody(client *http.Client, subAddr string) ([]byte, error) {
+	req, err := http.NewRequest(http.MethodGet, subAddr, nil)
+	if err != nil {
+		return nil, err
+	}
+	// 某些机场会拦截默认 Go UA，这里伪装常见浏览器 UA 提高成功率
+	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36")
+	req.Header.Set("Accept", "text/plain,application/yaml,text/yaml,*/*")
+	req.Header.Set("Cache-Control", "no-cache")
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return nil, fmt.Errorf("订阅请求失败: HTTP %d", resp.StatusCode)
+	}
+	return io.ReadAll(resp.Body)
+}
+
 func newHTTPClientIPv4(timeout time.Duration) *http.Client {
 	transport := &http.Transport{
 		DialContext: (&net.Dialer{
 			Timeout: timeout,
 		}).DialContext,
-		ForceAttemptHTTP2:     true,
+		ForceAttemptHTTP2:     false,
 		TLSHandshakeTimeout:   timeout,
 		ResponseHeaderTimeout: timeout,
+		TLSClientConfig: &tls.Config{
+			MinVersion: tls.VersionTLS12,
+		},
 	}
 	// 优先 IPv4，避免部分机场 IPv6 不稳定导致 reset
 	transport.DialContext = func(ctx context.Context, network, address string) (net.Conn, error) {
