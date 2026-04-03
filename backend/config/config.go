@@ -80,6 +80,25 @@ func ensureDefaults(conf *Config) {
 	if conf.LocalDNS == "" {
 		conf.LocalDNS = "https://223.5.5.5/dns-query"
 	}
+	conf.ProxyDNS = normalizeDNSAddress(conf.ProxyDNS, "https://1.1.1.1/dns-query")
+	conf.LocalDNS = normalizeDNSAddress(conf.LocalDNS, "https://223.5.5.5/dns-query")
+}
+
+func normalizeDNSAddress(addr, fallback string) string {
+	addr = strings.TrimSpace(addr)
+	if addr == "" {
+		return fallback
+	}
+	if strings.Contains(addr, "://") {
+		return addr
+	}
+	// 兼容用户填写 1.1.1.1 / 223.5.5.5 这类无协议地址
+	return "udp://" + addr
+}
+
+// EnsureDefaults 对外暴露，供应用层在导入配置后兜底修复
+func EnsureDefaults(conf *Config) {
+	ensureDefaults(conf)
 }
 
 func MergePeers(existing, incoming []*Peer) []*Peer {

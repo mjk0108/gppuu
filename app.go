@@ -538,6 +538,7 @@ func (a *App) ImportConfig(merge bool) string {
 	} else {
 		a.conf = in
 	}
+	config.EnsureDefaults(a.conf)
 	config.EnsureDirectPeer(a.conf)
 
 	if len(a.conf.PeerList) > 0 {
@@ -573,6 +574,7 @@ func (a *App) Start() string {
 	if a.box != nil {
 		return "running"
 	}
+	config.EnsureDefaults(a.conf)
 	var err error
 	a.box, err = client.Client(a.gamePeer, a.httpPeer, a.conf.ProxyDNS, a.conf.LocalDNS, a.conf.Rules)
 	if err != nil {
