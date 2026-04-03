@@ -22,6 +22,12 @@ jobs:
     env:
       APP_NAME: gpp
       ZIP_FILE: gpp-${{ matrix.build.GOOS }}-${{ matrix.build.GOARCH }}.zip
+      APPLE_CERT_BASE64: ${{ secrets.APPLE_CERT_BASE64 }}
+      APPLE_CERT_PASSWORD: ${{ secrets.APPLE_CERT_PASSWORD }}
+      APPLE_SIGN_IDENTITY: ${{ secrets.APPLE_SIGN_IDENTITY }}
+      APPLE_NOTARY_APPLE_ID: ${{ secrets.APPLE_NOTARY_APPLE_ID }}
+      APPLE_NOTARY_TEAM_ID: ${{ secrets.APPLE_NOTARY_TEAM_ID }}
+      APPLE_NOTARY_PASSWORD: ${{ secrets.APPLE_NOTARY_PASSWORD }}
     steps:
       - uses: actions/checkout@v4
       - name: Set up Go
@@ -46,6 +52,40 @@ jobs:
         run: |
           go run github.com/wailsapp/wails/v2/cmd/wails@v2.10.1 build -m -trimpath -tags webkit2_41,with_quic -o ${{ env.APP_NAME }}
 
+      - name: Import Apple signing certificate
+        if: runner.os == 'macOS' && env.APPLE_CERT_BASE64 != ''
+        shell: bash
+        run: |
+          echo "$APPLE_CERT_BASE64" | base64 --decode > /tmp/cert.p12
+          security create-keychain -p "" build.keychain
+          security default-keychain -s build.keychain
+          security unlock-keychain -p "" build.keychain
+          security import /tmp/cert.p12 -k build.keychain -P "$APPLE_CERT_PASSWORD" -T /usr/bin/codesign -T /usr/bin/security
+          security set-key-partition-list -S apple-tool:,apple: -s -k "" build.keychain
+
+      - name: Code sign macOS app (Developer ID)
+        if: runner.os == 'macOS' && env.APPLE_SIGN_IDENTITY != ''
+        shell: bash
+        run: |
+          codesign --force --deep --options runtime --sign "$APPLE_SIGN_IDENTITY" ./build/bin/${{ env.APP_NAME }}.app
+          codesign --verify --deep --strict --verbose=2 ./build/bin/${{ env.APP_NAME }}.app
+
+      - name: Notarize and staple macOS app
+        if: runner.os == 'macOS' && env.APPLE_NOTARY_APPLE_ID != '' && env.APPLE_NOTARY_TEAM_ID != '' && env.APPLE_NOTARY_PASSWORD != ''
+        shell: bash
+        run: |
+          cd ./build/bin
+          ditto -c -k --sequesterRsrc --keepParent ${{ env.APP_NAME }}.app ${{ env.ZIP_FILE }}
+          xcrun notarytool submit ${{ env.ZIP_FILE }} \
+            --apple-id "$APPLE_NOTARY_APPLE_ID" \
+            --team-id "$APPLE_NOTARY_TEAM_ID" \
+            --password "$APPLE_NOTARY_PASSWORD" \
+            --wait
+          xcrun stapler staple ${{ env.APP_NAME }}.app
+          # 重新打包：确保用户下载到的是已 stapled 的 app
+          rm -f ${{ env.ZIP_FILE }}
+          ditto -c -k --sequesterRsrc --keepParent ${{ env.APP_NAME }}.app ${{ env.ZIP_FILE }}
+
       - name: Build for Windows
         if: runner.os == 'Windows'
         shell: bash
@@ -60,8 +100,10 @@ jobs:
         if: runner.os == 'macOS'
         run: |
           cd ./build/bin
-          # The compiled product name of macos is always "${{ env.APP_NAME }}.app"
-          zip -q -r ${{ env.ZIP_FILE }} ${{ env.APP_NAME }}.app
+          if [ ! -f "${{ env.ZIP_FILE }}" ]; then
+            # 未开启签名/公证时，走基础打包
+            ditto -c -k --sequesterRsrc --keepParent ${{ env.APP_NAME }}.app ${{ env.ZIP_FILE }}
+          fi
 
       # Compress: Windows
       - name: Create a compressed file for Windows
