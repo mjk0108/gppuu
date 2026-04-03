@@ -413,6 +413,17 @@ func SaveConfig(config *Config) error {
 	return os.WriteFile(_path, file, 0o600)
 }
 func ParsePeer(token string) (error, *Peer) {
+	if strings.HasPrefix(strings.TrimSpace(token), "ss://") {
+		peer, err := parseSSLink(strings.TrimSpace(token))
+		if err != nil {
+			return err, nil
+		}
+		if strings.Contains(peer.Name, "剩余流量") || strings.Contains(peer.Name, "套餐到期") || strings.Contains(peer.Name, "重置") {
+			return errors.New("该链接是套餐信息，不是节点"), nil
+		}
+		return nil, peer
+	}
+
 	split := strings.Split(token, "#")
 	name := ""
 	if len(split) == 2 {
