@@ -200,7 +200,11 @@ func ParseSSLinks(text string) ([]*Peer, error) {
 			continue
 		}
 		// 过滤机场套餐提示行
-		if strings.Contains(peer.Name, "剩余流量") || strings.Contains(peer.Name, "套餐到期") || strings.Contains(peer.Name, "重置") {
+		if strings.Contains(peer.Name, "剩余流量") || strings.Contains(peer.Name, "套餐到期") || strings.Contains(peer.Name, "重置") || strings.Contains(peer.Name, "官网") {
+			continue
+		}
+		// 过滤机场信息占位节点（常见为 1:1）
+		if peer.Addr == "1" && peer.Port == 1 {
 			continue
 		}
 		out = append(out, peer)
@@ -418,7 +422,7 @@ func ParsePeer(token string) (error, *Peer) {
 		if err != nil {
 			return err, nil
 		}
-		if strings.Contains(peer.Name, "剩余流量") || strings.Contains(peer.Name, "套餐到期") || strings.Contains(peer.Name, "重置") {
+		if strings.Contains(peer.Name, "剩余流量") || strings.Contains(peer.Name, "套餐到期") || strings.Contains(peer.Name, "重置") || strings.Contains(peer.Name, "官网") || (peer.Addr == "1" && peer.Port == 1) {
 			return errors.New("该链接是套餐信息，不是节点"), nil
 		}
 		return nil, peer
