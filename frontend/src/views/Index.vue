@@ -7,8 +7,7 @@
           <div class="app-subtitle">简洁 · 稳定 · 一键连接</div>
         </div>
         <n-space>
-          <n-button quaternary class="ghost-btn" @click="openManageDialog">订阅管理</n-button>
-          <n-button type="primary" class="import-btn" @click="openImportDialog">+ 导入订阅</n-button>
+          <n-button type="primary" class="import-btn" @click="openImportDialog">+ 导入节点</n-button>
         </n-space>
       </div>
 
@@ -38,7 +37,7 @@
 
       <div class="quick-actions">
         <n-button class="pill-btn" @click="openNodeDialog">节点选择</n-button>
-        <n-button class="pill-btn" @click="refreshSub">更新订阅</n-button>
+        <n-button class="pill-btn" @click="openNodeDialog">导入节点</n-button>
         <n-button class="pill-btn" @click="openRuleDialog">规则设置</n-button>
         <n-button class="pill-btn" @click="exportConfigFile">导出配置</n-button>
       </div>
@@ -277,15 +276,8 @@ const getList = async () => {
 const openNodeDialog = () => getList()
 
 const openImportDialog = () => {
-  subscriptionUrl.value = ''
-  qrContent.value = ''
-  importMode.value = 'url'
-  showImportModal.value = true
-}
-
-const openManageDialog = async () => {
-  await loadSubscriptions()
-  showManageModal.value = true
+  message.info('订阅导入已下线，请使用节点导入')
+  openNodeDialog()
 }
 
 const openRuleDialog = async () => {
@@ -381,12 +373,7 @@ const importBatch = async () => {
 }
 
 const refreshSub = async () => {
-  const res = await RefreshSubscription()
-  if (res === 'ok') {
-    message.success('订阅更新成功')
-  } else {
-    message.error(`订阅更新失败: ${res}`)
-  }
+  message.info('订阅更新已下线，请改用节点导入')
 }
 
 const loadSubscriptions = async () => {
