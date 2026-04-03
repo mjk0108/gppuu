@@ -449,14 +449,17 @@ const submitCallback = () => {
     })
   }
   if (gameValue.value !== undefined || httpValue.value !== undefined) {
-    if (gameValue.value === undefined) {
-      message.error('请选择 Game 节点')
-      httpValue.value = undefined
-      return
+    // 只选一个时，自动双写，避免用户重复选择
+    if (gameValue.value === undefined && httpValue.value !== undefined) {
+      gameValue.value = httpValue.value
+      message.info('已自动将游戏节点设置为同一节点')
     }
-    if (httpValue.value === undefined) {
-      message.error('请选择 Http 节点')
-      gameValue.value = undefined
+    if (httpValue.value === undefined && gameValue.value !== undefined) {
+      httpValue.value = gameValue.value
+      message.info('已自动将直连/HTTP节点设置为同一节点')
+    }
+    if (gameValue.value === undefined || httpValue.value === undefined) {
+      message.error('请选择节点')
       return
     }
     SetPeer(gameValue.value, httpValue.value).then((res) => {
